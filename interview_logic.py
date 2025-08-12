@@ -6,9 +6,11 @@ import json
 from config import API_URL
 
 class InterviewSession:
-    def __init__(self, topic, session_id=None):
+    def __init__(self, topic, name, email, session_id=None):
         self.session_id = session_id if session_id else str(uuid.uuid4())
         self.topic = topic
+        self.name = name
+        self.email = email
         self.questions_and_answers = []
         self.question_count = 0 # 0: initial, 1: followup, 2: leading
         self.current_question = None
@@ -17,6 +19,8 @@ class InterviewSession:
         return {
             'session_id': self.session_id,
             'topic': self.topic,
+            'name': self.name,
+            'email': self.email,
             'questions_and_answers': json.dumps(self.questions_and_answers),
             'question_count': self.question_count,
             'current_question': self.current_question or '' # Convert None to empty string
@@ -24,7 +28,7 @@ class InterviewSession:
 
     @classmethod
     def from_dict(cls, data):
-        session = cls(data['topic'], session_id=data['session_id'])
+        session = cls(data['topic'], data['name'], data['email'], session_id=data['session_id'])
         session.questions_and_answers = json.loads(data.get('questions_and_answers', '[]'))
         session.question_count = int(data.get('question_count', 0))
         session.current_question = data.get('current_question')

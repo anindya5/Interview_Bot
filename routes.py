@@ -30,18 +30,20 @@ def init_app(app, r):
     def start_interview():
         """Starts a new interview session.
         
-        Expects a JSON payload with a 'topic' key.
+        Expects a JSON payload with 'topic', 'name', and 'email' keys.
         Creates a new InterviewSession, generates the first question, saves it to Redis,
         and returns the session_id and initial question to the client.
         """
         data = request.get_json()
         topic = data.get('topic')
+        name = data.get('name')
+        email = data.get('email')
 
-        if not topic:
-            return jsonify({'error': 'Topic is required.'}), 400
+        if not all([topic, name, email]):
+            return jsonify({'error': 'Topic, name, and email are required.'}), 400
 
-        # Create a new session and save it to Redis immediately
-        session = InterviewSession(topic)
+        # Create a new session with all candidate details
+        session = InterviewSession(topic, name, email)
         session.save(r)
         
         # Generate the first question and update the session state in Redis
