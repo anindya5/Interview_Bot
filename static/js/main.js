@@ -7,6 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const answerInput = document.getElementById('responseInput');
     const sendButton = document.getElementById('sendResponse');
     const loader = document.getElementById('loader');
+    const candidateNameInput = document.getElementById('candidate-name');
+    const candidateEmailInput = document.getElementById('candidate-email');
     let sessionId = null;
 
     interviewForm.addEventListener('submit', startInterview);
@@ -22,8 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
     async function startInterview(e) {
         e.preventDefault(); // Prevent the form from causing a page reload
         const topic = topicInput.value.trim();
-        if (!topic) {
-            alert('Please enter a topic.');
+        const name = candidateNameInput.value.trim();
+        const email = candidateEmailInput.value.trim();
+
+        if (!topic || !name || !email) {
+            alert('Please fill in your name, email, and the interview topic.');
             return;
         }
 
@@ -35,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/start-interview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic: topic })
+                body: JSON.stringify({ topic: topic, name: name, email: email })
             });
             const data = await response.json();
 
