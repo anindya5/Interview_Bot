@@ -1,10 +1,16 @@
 from flask import Blueprint, request, jsonify, render_template, send_from_directory
 from interview_logic import InterviewSession
+from scorecard import generate_llm_answer, calculate_similarity
 
 # Create a Flask Blueprint to organize routes
 main_bp = Blueprint('main', __name__)
 
-def init_app(app, r):
+# Store the Redis connection object from the app factory
+r = None
+
+def init_app(app, redis_conn):
+    global r
+    r = redis_conn
     """Initializes the routes and registers the blueprint with the Flask app."""
 
     # === Core Application Routes ===
@@ -58,10 +64,13 @@ def init_app(app, r):
 
     @main_bp.route('/submit', methods=['POST'])
     def submit():
-        """Handles a user's answer submission and returns the next question.
-        
-        Expects a JSON payload with 'session_id' and 'answer'.
-        Loads the session from Redis, generates the next question, and determines if the interview is complete.
+        """
+        Handles answer submission from the client.
+        - Expects 'session_id' and 'answer' in the JSON payload.
+        - Loads the session from Redis.
+        - If the interview is not over, generates the next question.
+        - If the interview is over (3 questions answered), it calculates the final score,
+          logs the transcript, cleans up the session, and notifies the client.
         """
         data = request.get_json()
         session_id = data.get('session_id')
@@ -71,28 +80,46 @@ def init_app(app, r):
         if not r:
             return jsonify({'error': 'Database connection not available.', 'finished': True}), 500
 
-        if not session_id:
-            return jsonify({'error': 'Invalid session ID', 'finished': True}), 400
+        if not session_id or not answer:
+            return jsonify({'error': 'Session ID and answer are required.'}), 400
 
-        # Load the existing session from Redis
         current_session = InterviewSession.load(r, session_id)
         if not current_session:
             return jsonify({'error': 'Session expired or not found.', 'finished': True}), 404
 
         # Check if the interview is over (after the 3rd question is answered)
         if current_session.question_count >= 3:
-            # Record the final answer
-            if current_session.questions_and_answers:
-                 current_session.questions_and_answers[-1]["answer"] = answer
+            # --- Final Scoring Logic ---
+            last_question = current_session.questions_and_answers[-1]['question']
+            llm_answer = generate_llm_answer(last_question, current_session.topic)
+            score = calculate_similarity(answer, llm_answer)
             
-            # Print the final transcript to the server console for logging
-            transcript = "\n".join([f"Q: {qa['question']}\nA: {qa['answer']}" for qa in current_session.questions_and_answers])
-            print(f"--- FINAL TRANSCRIPT ---\n{transcript}")
+            # Update the last record with the final answer, llm_answer, and score
+            current_session.questions_and_answers[-1]['answer'] = answer
+            current_session.questions_and_answers[-1]['llm_answer'] = llm_answer
+            current_session.questions_and_answers[-1]['score'] = score
+            # --- End Final Scoring ---
+
+            # Calculate average score
+            total_score = sum(qa['score'] for qa in current_session.questions_and_answers)
+            average_score = total_score / len(current_session.questions_and_answers) if current_session.questions_and_answers else 0.0
+
+            # Build a detailed transcript for server-side logging
+            transcript = f"\n--- FINAL SCORECARD FOR {current_session.name.upper()} ---\n"
+            transcript += f"Email: {current_session.email}\nTopic: {current_session.topic}\n"
+            transcript += f"FINAL AVERAGE SCORE: {average_score:.2f}\n"
+            transcript += "--------------------------------------------------\n"
+            for i, qa in enumerate(current_session.questions_and_answers):
+                transcript += f"Q{i+1}: {qa['question']}\n"
+                transcript += f"A: {qa['answer']}\n"
+                transcript += f"Score: {qa['score']:.2f}\n\n"
+            transcript += "--------------------------------------------------\n"
+            print(transcript)
             
             # Clean up the session from Redis
             r.delete(f"session:{session_id}")
             
-            # Signal to the client that the interview is finished
+            # Signal to the client that the interview is finished, without displaying the score
             return jsonify({'question': 'Thank you for your time! The interview is now complete.', 'finished': True})
 
         # If the interview is not over, generate the next question

@@ -5,4 +5,5 @@ python-dotenv==1.0.1
 requests==2.32.3
 gunicorn==22.0.0
 redis==5.0.7
+scikit-learn==1.5.1
 watchdog==2.3.1

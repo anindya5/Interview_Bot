@@ -4,6 +4,7 @@ import uuid
 import time
 import json
 from config import API_URL
+from scorecard import generate_llm_answer, calculate_similarity
 
 class InterviewSession:
     def __init__(self, topic, name, email, session_id=None):
@@ -51,16 +52,31 @@ class InterviewSession:
         prompt = f"""Your task is to generate a single, open-ended technical interview question about the topic: {self.topic}. Return only the question itself, with no extra text or explanation."""
         question = self._call_gemini_api(prompt)
         self.current_question = question
-        self.questions_and_answers.append({"question": question, "answer": ""})
+        # Initialize the Q&A entry with placeholders for the score and LLM answer
+        self.questions_and_answers.append({"question": question, "answer": "", "score": 0.0, "llm_answer": ""})
         return question
 
     def generate_next_question(self, last_answer):
+        # --- Scoring Logic Start ---
+        if self.questions_and_answers:
+            # Get the question the candidate just answered
+            last_question = self.questions_and_answers[-1]['question']
+            
+            # Update the candidate's answer
+            self.questions_and_answers[-1]['answer'] = last_answer
+            
+            # Generate the ideal LLM answer for scoring
+            llm_answer = generate_llm_answer(last_question, self.topic)
+            self.questions_and_answers[-1]['llm_answer'] = llm_answer
+            
+            # Calculate and store the similarity score
+            score = calculate_similarity(last_answer, llm_answer)
+            self.questions_and_answers[-1]['score'] = score
+            print(f"[SCORE] For Q: '{last_question[:50]}...', Score: {score:.2f}")
+        # --- Scoring Logic End ---
+
         self.question_count += 1
         
-        # Add the last answer to the conversation history
-        if self.questions_and_answers:
-            self.questions_and_answers[-1]["answer"] = last_answer
-
         conversation_history = ""
         for qa in self.questions_and_answers:
             conversation_history += f"Q: {qa['question']}\nA: {qa['answer']}\n\n"
@@ -72,7 +88,7 @@ class InterviewSession:
 Conversation History:
 {conversation_history}
 
-Candidate's Last Answer (for emphasis): "{last_answer}"
+Candidate's Last Answer (for emphasis): \"{last_answer}\"
 
 Your task: Generate a single follow-up question. Return only the question itself."""
         elif self.question_count == 3:
@@ -89,7 +105,7 @@ Your task: Generate a single leading question. Return only the question itself."
 
         question = self._call_gemini_api(prompt)
         self.current_question = question
-        self.questions_and_answers.append({"question": question, "answer": ""})
+        self.questions_and_answers.append({"question": question, "answer": "", "score": 0.0, "llm_answer": ""})
         return question
 
     def _call_gemini_api(self, prompt, retries=3, backoff_factor=2):
