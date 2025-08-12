@@ -43,7 +43,7 @@ class InterviewSession:
             'topic': self.topic,
             'questions_and_answers': json.dumps(self.questions_and_answers),
             'question_count': self.question_count,
-            'current_question': self.current_question
+            'current_question': self.current_question or '' # Convert None to empty string
         }
 
     @classmethod
