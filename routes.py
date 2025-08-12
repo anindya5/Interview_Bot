@@ -1,16 +1,19 @@
 from flask import Blueprint, request, jsonify, render_template, send_from_directory
 from interview_logic import InterviewSession
 from scorecard import generate_llm_answer, calculate_similarity
+from models import Interview, Result
 
 # Create a Flask Blueprint to organize routes
 main_bp = Blueprint('main', __name__)
 
-# Store the Redis connection object from the app factory
+# Store connection objects from the app factory
 r = None
+db = None
 
-def init_app(app, redis_conn):
-    global r
+def init_app(app, redis_conn, db_conn):
+    global r, db
     r = redis_conn
+    db = db_conn
     """Initializes the routes and registers the blueprint with the Flask app."""
 
     # === Core Application Routes ===
@@ -116,6 +119,36 @@ def init_app(app, redis_conn):
             transcript += "--------------------------------------------------\n"
             print(transcript)
             
+            # --- Database Logging ---
+            # Create a new Interview record and associated Result records
+            try:
+                new_interview = Interview(
+                    candidate_name=current_session.name,
+                    candidate_email=current_session.email,
+                    topic=current_session.topic,
+                    average_score=average_score
+                )
+                db.session.add(new_interview)
+                db.session.flush()  # Use flush to get the ID for the new_interview
+
+                for qa in current_session.questions_and_answers:
+                    new_result = Result(
+                        interview_id=new_interview.id,
+                        question=qa['question'],
+                        answer=qa.get('answer', ''),
+                        score=qa.get('score', 0.0)
+                    )
+                    db.session.add(new_result)
+                
+                db.session.commit()
+                print(f"Successfully saved interview for {current_session.name} to the database.")
+            except Exception as e:
+                db.session.rollback()
+                print(f"Database error: {e}")
+                # Optionally, return an error to the user
+                # return jsonify({'error': 'Could not save interview results.', 'finished': True}), 500
+            # --- End Database Logging ---
+
             # Clean up the session from Redis
             r.delete(f"session:{session_id}")
             

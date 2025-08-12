@@ -49,7 +49,7 @@ class InterviewSession:
 
     def generate_initial_question(self):
         self.question_count = 1
-        prompt = f"""Your task is to generate a single, open-ended technical interview question about the topic: {self.topic}. Return only the question itself, with no extra text or explanation."""
+        prompt = f"""Your task is to generate a single, open-ended interview question about the topic: {self.topic}. Ask technical question if the topic is technical otherwise just focus on the topic. Return only the question itself, with no extra text or explanation."""
         question = self._call_gemini_api(prompt)
         self.current_question = question
         # Initialize the Q&A entry with placeholders for the score and LLM answer
