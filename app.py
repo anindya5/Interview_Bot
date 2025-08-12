@@ -5,11 +5,23 @@ from dotenv import load_dotenv
 import requests
 import uuid
 import time
+import redis
+import json
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# Connect to Redis
+try:
+    redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+    r = redis.from_url(redis_url, decode_responses=True)
+    r.ping() # Check connection
+    print("Successfully connected to Redis.")
+except redis.exceptions.ConnectionError as e:
+    print(f"Could not connect to Redis: {e}")
+    r = None
 
 # Gemini API configuration
 API_KEY = os.getenv('GEMINI_API_KEY')
@@ -18,12 +30,41 @@ API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-p
 sessions = {}
 
 class InterviewSession:
-    def __init__(self, topic):
-        self.session_id = str(uuid.uuid4())
+    def __init__(self, topic, session_id=None):
+        self.session_id = session_id if session_id else str(uuid.uuid4())
         self.topic = topic
         self.questions_and_answers = []
         self.question_count = 0 # 0: initial, 1: followup, 2: leading
         self.current_question = None
+
+    def to_dict(self):
+        return {
+            'session_id': self.session_id,
+            'topic': self.topic,
+            'questions_and_answers': json.dumps(self.questions_and_answers),
+            'question_count': self.question_count,
+            'current_question': self.current_question
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        session = cls(data['topic'], session_id=data['session_id'])
+        session.questions_and_answers = json.loads(data.get('questions_and_answers', '[]'))
+        session.question_count = int(data.get('question_count', 0))
+        session.current_question = data.get('current_question')
+        return session
+
+    def save(self):
+        if r:
+            r.hset(f"session:{self.session_id}", mapping=self.to_dict())
+
+    @classmethod
+    def load(cls, session_id):
+        if r:
+            data = r.hgetall(f"session:{session_id}")
+            if data:
+                return cls.from_dict(data)
+        return None
 
     def generate_initial_question(self):
         self.question_count = 1
@@ -137,8 +178,9 @@ def start_interview():
         return jsonify({'error': 'Topic is required.'}), 400
 
     session = InterviewSession(topic)
-    sessions[session.session_id] = session
+    session.save()
     initial_question = session.generate_initial_question()
+    session.save() # Save state after generating question
     
     if initial_question.startswith("Error:"):
         return jsonify({'error': initial_question}), 500
@@ -154,21 +196,29 @@ def submit():
     session_id = data.get('session_id')
     answer = data.get('answer')
 
-    if not session_id or session_id not in sessions:
+    if not r:
+        return jsonify({'error': 'Database connection not available.', 'finished': True}), 500
+
+    if not session_id:
         return jsonify({'error': 'Invalid session ID', 'finished': True}), 400
 
-    current_session = sessions[session_id]
+    current_session = InterviewSession.load(session_id)
+    if not current_session:
+        return jsonify({'error': 'Session expired or not found.', 'finished': True}), 404
 
-    if current_session.question_count >= 5:
+    if current_session.question_count >= 3:
         # The last answer was for the final question. End of interview.
         if current_session.questions_and_answers:
              current_session.questions_and_answers[-1]["answer"] = answer
         transcript = "\n".join([f"Q: {qa['question']}\nA: {qa['answer']}" for qa in current_session.questions_and_answers])
         print(f"--- FINAL TRANSCRIPT ---\n{transcript}")
+        # Optionally, delete the session from Redis after completion
+        r.delete(f"session:{session_id}")
         return jsonify({'question': 'Thank you for your time! The interview is now complete.', 'finished': True})
 
     # Generate follow-up or leading question
     next_question = current_session.generate_followup(answer)
+    current_session.save() # Save state after generating question
 
     if next_question.startswith("Error:"):
         return jsonify({'error': next_question, 'finished': True}), 500
