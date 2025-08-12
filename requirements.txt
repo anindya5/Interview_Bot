@@ -1,8 +1,8 @@
 flask==2.3.3
-flask-cors==4.0.0
-werkzeug==2.2.2
+flask-cors==4.0.1
+werkzeug==2.3.7
 python-dotenv==1.0.1
 requests==2.32.3
-uuid==1.30
 gunicorn==22.0.0
+redis==5.0.7
 watchdog==2.3.1
