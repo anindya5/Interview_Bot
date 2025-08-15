@@ -105,7 +105,7 @@ class OnboardingSession:
             self.save()
             if not send_ok:
                 return {'message': f'Could not send verification email: {err}. Please enter the 5-digit code if you received it, or type RESEND to try again.'}
-            return {'message': f"I've sent a 5-digit verification code to {email}. Please enter the code here. Type RESEND to send it again."}
+            return {'message': f"I've sent a 5-digit verification code to {email}. Please enter the code here. Please also check your spam folderType RESEND to send it again."}
 
         if step == 'email_code':
             code_input = user_message.strip()
