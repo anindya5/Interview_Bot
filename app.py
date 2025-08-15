@@ -3,10 +3,11 @@ from flask import Flask
 from flask_cors import CORS
 import redis
 from extensions import db
-import routes
 from dotenv import load_dotenv
 
-load_dotenv() # Load environment variables from .env file
+load_dotenv() # Load environment variables from .env file BEFORE importing routes
+
+import routes
 
 def create_app():
     app = Flask(__name__)

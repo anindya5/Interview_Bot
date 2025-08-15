@@ -13,26 +13,7 @@
         </header>
         
         <main>
-            <div class="interview-setup" id="interviewSetup">
-                <h2>Start a New Interview</h2>
-                <form id="interviewForm">
-                    <div class="form-group">
-                        <label for="candidate-name">Your Name:</label>
-                        <input type="text" id="candidate-name" name="candidate-name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="candidate-email">Your Email:</label>
-                        <input type="email" id="candidate-email" name="candidate-email" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="topic">Interview Topic:</label>
-                        <input type="text" id="topic" name="topic" required>
-                    </div>
-                    <button type="submit" class="btn primary">Start Interview</button>
-                </form>
-            </div>
-
-            <div class="interview-session" id="interviewSession" style="display: none;">
+            <div class="interview-session" id="interviewSession" style="display: block;">
                 <div class="chat-container">
                     <div id="chat-window" class="chat-window">
                         <div class="chat-messages" id="chatMessages"></div>
@@ -44,10 +25,6 @@
                         <textarea id="responseInput" placeholder="Type your response here..." required></textarea>
                         <button class="btn primary" id="sendResponse">Send Response</button>
                     </div>
-                </div>
-                <div class="topic-display">
-                    <h3>Current Topic:</h3>
-                    <p id="currentTopic"></p>
                 </div>
             </div>
         </main>
