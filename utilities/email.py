@@ -5,6 +5,11 @@ from .constants import BREVO_SEND_URL
 
 def send_verification_email(to_email: str, code: str):
     brevo_api_key = os.getenv('BREVO_KEY')
+    # In non-stage/prod environments, print the code to console to assist local testing
+    app_env = (os.getenv('APP_ENV') or os.getenv('FLASK_ENV') or 'local').lower()
+    if app_env not in ('stage', 'staging', 'prod', 'production'):
+        print(f"[DEV] Verification code for {to_email}: {code}")
+
     if not brevo_api_key:
         return False, 'BREVO_KEY not configured on server'
     payload = {

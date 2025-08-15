@@ -18,6 +18,8 @@ class InterviewSession:
         self.difficulty_levels = list(DIFFICULTY_LEVELS)
         self.level_index = 0  # 0..4
         self.phase = 'main'   # 'main' or 'followup' for each level
+        # Track unique initial questions to avoid repetition
+        self.initial_questions = []
 
     def to_dict(self):
         return {
@@ -31,6 +33,7 @@ class InterviewSession:
             'level_index': self.level_index,
             'phase': self.phase,
             'difficulty_levels': json.dumps(self.difficulty_levels),
+            'initial_questions': json.dumps(self.initial_questions),
         }
 
     @classmethod
@@ -51,6 +54,10 @@ class InterviewSession:
             ]
         except json.JSONDecodeError:
             session.difficulty_levels = ['very easy', 'easy', 'medium', 'hard', 'very hard']
+        try:
+            session.initial_questions = json.loads(data.get('initial_questions', '[]'))
+        except json.JSONDecodeError:
+            session.initial_questions = []
         return session
 
     def save(self, r):
@@ -72,11 +79,13 @@ class InterviewSession:
         self.question_count = 1
         difficulty = self.difficulty_levels[self.level_index]
         prompt = (
-            f"Your task is to generate a single, open-ended interview question about the topic: {self.topic}. Ask {difficulty} technical question on the topic ." 
+            f"Your task is to generate a single, open-ended interview question about the topic: {self.topic}. Ask {difficulty} technical question on the topic ."
             f"Return only the question itself, with no extra text or explanation"
         )
         question = self._call_gemini_api(prompt)
         self.current_question = question
+        # Record unique initial
+        self.initial_questions.append(question)
         # Initialize the Q&A entry with placeholders for the score and LLM answer
         self.questions_and_answers.append({"question": question, "answer": "", "score": 0.0, "llm_answer": ""})
         return question
@@ -121,19 +130,33 @@ class InterviewSession:
             )
             # Switch to follow-up phase (we are generating the follow-up now)
             self.phase = 'followup'
+            question = self._call_gemini_api(prompt)
         else:
             # We just asked follow-up previously; advance difficulty level and ask a new main question
             if self.level_index < len(self.difficulty_levels) - 1:
                 self.level_index += 1
             difficulty = self.difficulty_levels[self.level_index]
-            prompt = (
-                f"You are an expert interviewer. Craft a single, open-ended question on the topic '{self.topic}'. "
+            base_prompt = (
+                f"You are an expert interviewer. Craft a single, open-ended QUESTION on the topic '{self.topic}'. "
+                f"It must be technical and distinct from any previous initial questions. "
                 f"Internally target difficulty: {difficulty}. Do NOT mention or allude to difficulty levels. "
                 f"Keep language natural and conversational. Return ONLY the question text."
             )
+            # Try to ensure uniqueness from prior initials
+            question = self._call_gemini_api(base_prompt)
+            retries = 2
+            while retries >= 0 and question in self.initial_questions:
+                avoid_list = " | ".join(self.initial_questions[-5:])  # include last few initials
+                prompt = (
+                    base_prompt +
+                    f" Ensure it is not similar to any of these: {avoid_list}."
+                )
+                question = self._call_gemini_api(prompt)
+                retries -= 1
+            # Record unique initial (even if retries exhausted, record to move on)
+            self.initial_questions.append(question)
             self.phase = 'main'
 
-        question = self._call_gemini_api(prompt)
         self.current_question = question
         self.questions_and_answers.append({"question": question, "answer": "", "score": 0.0, "llm_answer": ""})
         return question
