@@ -142,6 +142,8 @@ class InterviewSession:
                 f"Internally target difficulty: {difficulty}. Do NOT mention or allude to difficulty levels. "
                 f"Keep language natural and conversational. Return ONLY the question text."
             )
+            # Ensure phase reflects the new initial BEFORE calling LLM so stubbed tests see 'main'
+            self.phase = 'main'
             # Try to ensure uniqueness from prior initials
             question = self._call_gemini_api(base_prompt)
             retries = 2
