@@ -5,5 +5,5 @@ MAX_CODE_ATTEMPTS = 3
 
 # Shared difficulty levels used by interview logic
 DIFFICULTY_LEVELS = [
-    'very easy', 'easy', 'medium', 'hard', 'very hard'
+    'introductory', 'medium hard', 'hard', 'hard', 'very hard'
 ]
