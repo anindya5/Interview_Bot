@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, render_template, send_from_direct
 from interview_logic import InterviewSession
 from scorecard import generate_llm_answer, calculate_similarity
 from models import Interview, Result
+from onboarding import OnboardingSession
 
 # Create a Flask Blueprint to organize routes
 main_bp = Blueprint('main', __name__)
@@ -164,6 +165,33 @@ def init_app(app, redis_conn, db_conn):
         
         # Return the next question to the client
         return jsonify({'question': next_question, 'finished': False})
+
+    # Onboarding endpoints
+    @main_bp.route('/onboarding/start', methods=['POST'])
+    def onboarding_start():
+        if not r:
+            return jsonify({'error': 'Database connection not available.'}), 500
+        session = OnboardingSession(r)
+        payload = session.start()
+        return jsonify({'onboarding_session_id': payload['session_id'], 'message': payload['message'], 'finished': payload['finished']})
+
+    @main_bp.route('/onboarding/continue', methods=['POST'])
+    def onboarding_continue():
+        if not r:
+            return jsonify({'error': 'Database connection not available.'}), 500
+        data = request.get_json() or {}
+        session_id = data.get('onboarding_session_id')
+        user_message = data.get('message', '')
+        if not session_id:
+            return jsonify({'error': 'onboarding_session_id is required'}), 400
+        session = OnboardingSession.load(r, session_id)
+        if not session:
+            return jsonify({'error': 'Onboarding session not found'}), 404
+        result = session.continue_flow(user_message)
+        resp = {'message': result.get('message', ''), 'finished': result.get('finished', False)}
+        if 'candidate' in result:
+            resp['candidate'] = result['candidate']
+        return jsonify(resp)
 
     # Register the blueprint with the main Flask app
     app.register_blueprint(main_bp)
