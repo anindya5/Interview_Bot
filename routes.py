@@ -189,8 +189,29 @@ def init_app(app, redis_conn, db_conn):
             return jsonify({'error': 'Onboarding session not found'}), 404
         result = session.continue_flow(user_message)
         resp = {'message': result.get('message', ''), 'finished': result.get('finished', False)}
-        if 'candidate' in result:
-            resp['candidate'] = result['candidate']
+        for key in ['candidate', 'stage', 'resend_available_in', 'expires_in', 'attempts_left']:
+            if key in result:
+                resp[key] = result[key]
+        return jsonify(resp)
+
+    @main_bp.route('/onboarding/resend', methods=['POST'])
+    def onboarding_resend():
+        if not r:
+            return jsonify({'error': 'Database connection not available.'}), 500
+        data = request.get_json() or {}
+        session_id = data.get('onboarding_session_id')
+        if not session_id:
+            return jsonify({'error': 'onboarding_session_id is required'}), 400
+        session = OnboardingSession.load(r, session_id)
+        if not session:
+            return jsonify({'error': 'Onboarding session not found'}), 404
+        result = session.resend()
+        if 'error' in result:
+            return jsonify(result), 400
+        resp = {'message': result.get('message', ''), 'finished': result.get('finished', False)}
+        for key in ['stage', 'resend_available_in', 'expires_in', 'attempts_left']:
+            if key in result:
+                resp[key] = result[key]
         return jsonify(resp)
 
     # Register the blueprint with the main Flask app

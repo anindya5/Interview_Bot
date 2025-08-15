@@ -10,6 +10,138 @@ document.addEventListener('DOMContentLoaded', () => {
     let onboardingSessionId = null; // onboarding session id
     let isOnboarding = true;
     let candidate = null; // {name, email, phone, topic}
+    let currentStage = null; // e.g., 'email_code'
+
+    // Resend button and timers
+    const chatInputContainer = sendButton.parentElement;
+    const resendBtn = document.createElement('button');
+    resendBtn.id = 'resendCodeBtn';
+    resendBtn.className = 'btn secondary';
+    resendBtn.style.marginLeft = '8px';
+    resendBtn.style.display = 'none';
+    resendBtn.disabled = true;
+    resendBtn.textContent = 'Resend code';
+    chatInputContainer.appendChild(resendBtn);
+
+    // Inline verification info (expires countdown)
+    const verificationInfo = document.createElement('div');
+    verificationInfo.id = 'verificationInfo';
+    verificationInfo.style.marginLeft = '8px';
+    verificationInfo.style.fontSize = '0.9em';
+    verificationInfo.style.color = '#666';
+    verificationInfo.style.display = 'none';
+    chatInputContainer.appendChild(verificationInfo);
+
+    let resendInterval = null;
+    let resendRemaining = 0;
+    let expiryInterval = null;
+    let expiryRemaining = 0;
+
+    function startResendCountdown(seconds) {
+        clearInterval(resendInterval);
+        resendRemaining = seconds || 60;
+        if (resendRemaining <= 0) {
+            enableResend();
+            return;
+        }
+        disableResend(`Resend in ${resendRemaining}s`);
+        resendInterval = setInterval(() => {
+            resendRemaining -= 1;
+            if (resendRemaining <= 0) {
+                clearInterval(resendInterval);
+                enableResend();
+            } else {
+                disableResend(`Resend in ${resendRemaining}s`);
+            }
+        }, 1000);
+    }
+
+    function startExpiryCountdown(seconds, labelText) {
+        clearInterval(expiryInterval);
+        expiryRemaining = Math.max(0, seconds || 0);
+        if (expiryRemaining <= 0) {
+            showVerificationInfo(`${labelText || 'Code sent to your email.'} Expired.`);
+            return;
+        }
+        showVerificationInfo(`${labelText || 'Code sent to your email.'} Expires in ${formatMMSS(expiryRemaining)}.`);
+        expiryInterval = setInterval(() => {
+            expiryRemaining -= 1;
+            if (expiryRemaining <= 0) {
+                clearInterval(expiryInterval);
+                showVerificationInfo(`${labelText || 'Code sent to your email.'} Expired.`);
+            } else {
+                showVerificationInfo(`${labelText || 'Code sent to your email.'} Expires in ${formatMMSS(expiryRemaining)}.`);
+            }
+        }, 1000);
+    }
+
+    function formatMMSS(totalSeconds) {
+        const m = Math.floor(totalSeconds / 60);
+        const s = totalSeconds % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function enableResend() {
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Resend code';
+    }
+    function disableResend(text) {
+        resendBtn.disabled = true;
+        resendBtn.textContent = text || 'Resend code';
+    }
+    function hideResend() {
+        resendBtn.style.display = 'none';
+        clearInterval(resendInterval);
+    }
+    function showResend() {
+        resendBtn.style.display = 'inline-block';
+    }
+
+    function showVerificationInfo(text) {
+        verificationInfo.textContent = text;
+        verificationInfo.style.display = 'inline-block';
+    }
+    function hideVerificationInfo() {
+        verificationInfo.style.display = 'none';
+        verificationInfo.textContent = '';
+        clearInterval(expiryInterval);
+    }
+
+    resendBtn.addEventListener('click', async () => {
+        if (!onboardingSessionId) return;
+        showLoading(true);
+        try {
+            const res = await fetch('/onboarding/resend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ onboarding_session_id: onboardingSessionId })
+            });
+            const data = await res.json();
+            if (data.error) {
+                appendMessage('bot', `Error: ${data.error}`);
+                return;
+            }
+            if (data.message) appendMessage('bot', data.message);
+            // Update meta and cooldown
+            if (typeof data.resend_available_in === 'number') {
+                showResend();
+                startResendCountdown(data.resend_available_in);
+            }
+            if (typeof data.expires_in === 'number') {
+                startExpiryCountdown(data.expires_in, 'Code resent to your email.');
+            }
+            // If backend signals finished/end for any reason
+            if (data.finished) {
+                isOnboarding = false;
+                hideResend();
+                hideVerificationInfo();
+            }
+        } catch (e) {
+            appendMessage('bot', 'Failed to resend code. Please try again shortly.');
+        } finally {
+            showLoading(false);
+        }
+    });
 
     // Hide setup form if exists and show chat
     if (interviewSetup) interviewSetup.style.display = 'none';
@@ -66,6 +198,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function handleVerificationMeta(data) {
+        currentStage = data.stage || null;
+        if (currentStage === 'email_code') {
+            showResend();
+            if (typeof data.resend_available_in === 'number') {
+                startResendCountdown(data.resend_available_in);
+            }
+            if (typeof data.expires_in === 'number') {
+                startExpiryCountdown(data.expires_in, 'Code sent to your email.');
+            }
+            // Optionally display attempts/expires info in chat stream
+            if (typeof data.attempts_left === 'number' && typeof data.expires_in === 'number') {
+                appendMessage('bot', `You have ${data.attempts_left} attempt(s) left. Code expires in ${data.expires_in}s.`);
+            }
+        } else {
+            hideResend();
+            hideVerificationInfo();
+        }
+    }
+
     async function continueOnboarding(message) {
         if (!onboardingSessionId) return;
         const res = await fetch('/onboarding/continue', {
@@ -78,15 +230,26 @@ document.addEventListener('DOMContentLoaded', () => {
             appendMessage('bot', `Error: ${data.error}`);
             return;
         }
+        if (data.stage) {
+            handleVerificationMeta(data);
+        }
         if (data.message) appendMessage('bot', data.message);
         if (data.finished) {
-            candidate = data.candidate || null;
-            isOnboarding = false;
-            if (!candidate || !candidate.topic || !candidate.name || !candidate.email) {
-                appendMessage('bot', 'Missing info to start interview. Please refresh.');
-                return;
+            hideResend();
+            hideVerificationInfo();
+            if (data.candidate) {
+                candidate = data.candidate;
+                isOnboarding = false;
+                if (!candidate.topic || !candidate.name || !candidate.email) {
+                    appendMessage('bot', 'Missing info to start interview. Please refresh.');
+                    return;
+                }
+                await startInterview(candidate);
+            } else {
+                // Onboarding ended without candidate (e.g., timeout/too many attempts)
+                answerInput.disabled = true;
+                sendButton.disabled = true;
             }
-            await startInterview(candidate);
         }
     }
 
@@ -148,10 +311,12 @@ document.addEventListener('DOMContentLoaded', () => {
             loader.style.display = 'flex';
             answerInput.disabled = true;
             sendButton.disabled = true;
+            resendBtn.disabled = true;
         } else {
             loader.style.display = 'none';
             answerInput.disabled = false;
             sendButton.disabled = false;
+            // resend button state controlled separately by countdown
             answerInput.focus();
         }
     }

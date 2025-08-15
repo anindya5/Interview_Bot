@@ -8,6 +8,9 @@ from dataclasses import dataclass, asdict
 from typing import Optional
 
 BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email'
+CODE_EXPIRY_SEC = 180  # 3 minutes
+RESEND_COOLDOWN_SEC = 60  # 1 minute
+MAX_CODE_ATTEMPTS = 3
 
 
 @dataclass
@@ -20,6 +23,9 @@ class OnboardingState:
     topic: str = ''
     email_code: str = ''  # generated 5-digit code
     created_at: float = 0.0
+    email_code_sent_at: float = 0.0
+    email_code_attempts: int = 0
+    terminated: bool = False
 
     def to_dict(self):
         d = asdict(self)
@@ -36,6 +42,9 @@ class OnboardingState:
             topic=d.get('topic', ''),
             email_code=d.get('email_code', ''),
             created_at=float(d.get('created_at', '0') or 0.0),
+            email_code_sent_at=float(d.get('email_code_sent_at', '0') or 0.0),
+            email_code_attempts=int(d.get('email_code_attempts', '0') or 0),
+            terminated=(d.get('terminated', 'False') == 'True'),
         )
 
 
@@ -81,6 +90,9 @@ class OnboardingSession:
         if not self.state:
             return {'error': 'Onboarding session not found.', 'finished': True}
 
+        if self.state.terminated:
+            return {'message': 'This onboarding session has ended.', 'finished': True}
+
         step = self.state.step
 
         if step == 'name':
@@ -100,28 +112,47 @@ class OnboardingSession:
             # Generate and send verification code
             code = f"{random.randint(10000, 99999)}"
             self.state.email_code = code
+            self.state.email_code_sent_at = time.time()
+            self.state.email_code_attempts = 0
             send_ok, err = self._send_email_code(email, code)
             self.state.step = 'email_code'
             self.save()
+            meta = self._verification_meta()
             if not send_ok:
-                return {'message': f'Could not send verification email: {err}. Please enter the 5-digit code if you received it, or type RESEND to try again.'}
-            return {'message': f"I've sent a 5-digit verification code to {email}. Please enter the code here. Please also check your spam folderType RESEND to send it again."}
+                return {'message': f'Could not send verification email: {err}.', 'stage': 'email_code', **meta}
+            return {
+                'message': f"I've sent a 5-digit verification code to {email}. Please enter the code here. Please also check your spam folder.",
+                'stage': 'email_code',
+                **meta
+            }
 
         if step == 'email_code':
-            code_input = user_message.strip()
-            if code_input.upper() == 'RESEND':
-                code = f"{random.randint(10000, 99999)}"
-                self.state.email_code = code
-                send_ok, err = self._send_email_code(self.state.email, code)
+            now = time.time()
+            # Expired?
+            if now - self.state.email_code_sent_at > CODE_EXPIRY_SEC:
+                self.state.terminated = True
                 self.save()
-                if not send_ok:
-                    return {'message': f'Failed to resend email: {err}. You can try again with RESEND or enter the code if received.'}
-                return {'message': 'A new code has been sent. Please enter the 5-digit code.'}
+                return {'message': 'Verification timed out (3 minutes). Please restart onboarding.', 'finished': True}
+
+            code_input = user_message.strip()
+            if not code_input:
+                return {'message': 'Please enter the 5-digit code.' , **self._verification_meta()}
+
             if code_input == self.state.email_code:
                 self.state.step = 'phone'
                 self.save()
                 return {'message': 'Email verified! What is your phone number? (digits only, include country code if outside US)'}
-            return {'message': 'Incorrect code. Please try again or type RESEND.'}
+
+            # wrong attempt
+            self.state.email_code_attempts += 1
+            attempts_left = MAX_CODE_ATTEMPTS - self.state.email_code_attempts
+            if self.state.email_code_attempts >= MAX_CODE_ATTEMPTS:
+                self.state.terminated = True
+                self.save()
+                return {'message': 'Too many incorrect attempts. Ending the interview setup.', 'finished': True}
+            self.save()
+            meta = self._verification_meta()
+            return {'message': f'Incorrect code. You have {attempts_left} attempt(s) left.', 'stage': 'email_code', **meta}
 
         if step == 'phone':
             phone = user_message.strip()
@@ -153,6 +184,37 @@ class OnboardingSession:
             }
 
         return {'error': 'Invalid onboarding step.', 'finished': True}
+
+    def resend(self):
+        if not self.state or self.state.step != 'email_code' or self.state.terminated:
+            return {'error': 'Cannot resend at this stage.'}
+        now = time.time()
+        # Check cooldown
+        if now - self.state.email_code_sent_at < RESEND_COOLDOWN_SEC:
+            return {'message': 'Please wait before resending the code.', **self._verification_meta()}
+        # Generate new code and send
+        code = f"{random.randint(10000, 99999)}"
+        self.state.email_code = code
+        self.state.email_code_sent_at = now
+        self.state.email_code_attempts = 0
+        send_ok, err = self._send_email_code(self.state.email, code)
+        self.save()
+        meta = self._verification_meta()
+        if not send_ok:
+            return {'message': f'Failed to resend email: {err}.', 'stage': 'email_code', **meta}
+        return {'message': 'A new code has been sent. Please enter the 5-digit code.', 'stage': 'email_code', **meta}
+
+    def _verification_meta(self):
+        now = time.time()
+        resend_in = max(0, RESEND_COOLDOWN_SEC - int(now - self.state.email_code_sent_at)) if self.state.email_code_sent_at else RESEND_COOLDOWN_SEC
+        expires_in = max(0, CODE_EXPIRY_SEC - int(now - self.state.email_code_sent_at)) if self.state.email_code_sent_at else CODE_EXPIRY_SEC
+        attempts_left = max(0, MAX_CODE_ATTEMPTS - int(self.state.email_code_attempts))
+        return {
+            'finished': False,
+            'resend_available_in': resend_in,
+            'expires_in': expires_in,
+            'attempts_left': attempts_left,
+        }
 
     def _looks_like_email(self, email: str) -> bool:
         return '@' in email and '.' in email and len(email) >= 6
