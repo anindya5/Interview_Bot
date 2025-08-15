@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, render_template, send_from_directory
 from interview_logic import InterviewSession
 from scorecard import generate_llm_answer, calculate_similarity
-from models import Interview, Result
+from database_models import Interview, Result
 from onboarding import OnboardingSession
 
 # Create a Flask Blueprint to organize routes
@@ -73,7 +73,7 @@ def init_app(app, redis_conn, db_conn):
         - Expects 'session_id' and 'answer' in the JSON payload.
         - Loads the session from Redis.
         - If the interview is not over, generates the next question.
-        - If the interview is over (3 questions answered), it calculates the final score,
+        - If the interview is over (10 questions answered), it calculates the final score,
           logs the transcript, cleans up the session, and notifies the client.
         """
         data = request.get_json()
@@ -91,8 +91,8 @@ def init_app(app, redis_conn, db_conn):
         if not current_session:
             return jsonify({'error': 'Session expired or not found.', 'finished': True}), 404
 
-        # Check if the interview is over (after the 3rd question is answered)
-        if current_session.question_count >= 3:
+        # Check if the interview is over (after the 10th question is answered: 5 levels × 2 questions each)
+        if current_session.question_count >= 10:
             # --- Final Scoring Logic ---
             last_question = current_session.questions_and_answers[-1]['question']
             llm_answer = generate_llm_answer(last_question, current_session.topic)

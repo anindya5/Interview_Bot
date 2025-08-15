@@ -7,10 +7,20 @@ import requests
 from dataclasses import dataclass, asdict
 from typing import Optional
 
-BREVO_SEND_URL = 'https://api.brevo.com/v3/smtp/email'
-CODE_EXPIRY_SEC = 180  # 3 minutes
-RESEND_COOLDOWN_SEC = 60  # 1 minute
-MAX_CODE_ATTEMPTS = 3
+from utilities.constants import (
+    BREVO_SEND_URL as _BREVO_SEND_URL,
+    CODE_EXPIRY_SEC as _CODE_EXPIRY_SEC,
+    RESEND_COOLDOWN_SEC as _RESEND_COOLDOWN_SEC,
+    MAX_CODE_ATTEMPTS as _MAX_CODE_ATTEMPTS,
+)
+from utilities.email import send_verification_email
+from utilities.validators import looks_like_email
+
+# Re-export constants for backward compatibility with existing imports/tests
+BREVO_SEND_URL = _BREVO_SEND_URL
+CODE_EXPIRY_SEC = _CODE_EXPIRY_SEC
+RESEND_COOLDOWN_SEC = _RESEND_COOLDOWN_SEC
+MAX_CODE_ATTEMPTS = _MAX_CODE_ATTEMPTS
 
 
 @dataclass
@@ -217,27 +227,9 @@ class OnboardingSession:
         }
 
     def _looks_like_email(self, email: str) -> bool:
-        return '@' in email and '.' in email and len(email) >= 6
+        # Delegate to utilities.validators
+        return looks_like_email(email)
 
     def _send_email_code(self, to_email: str, code: str):
-        brevo_api_key = os.getenv('BREVO_KEY')
-        if not brevo_api_key:
-            return False, 'BREVO_KEY not configured on server'
-        payload = {
-            'to': [{ 'email': to_email }],
-            'sender': { 'name': 'Interview Assistant', 'email': 'anindya55@gmail.com' },
-            'subject': 'Your verification code',
-            'htmlContent': f'<p>Your verification code is: <strong>{code}</strong></p>'
-        }
-        headers = {
-            'accept': 'application/json',
-            'content-type': 'application/json',
-            'api-key': brevo_api_key,
-        }
-        try:
-            resp = requests.post(BREVO_SEND_URL, headers=headers, json=payload, timeout=20)
-            if resp.status_code >= 200 and resp.status_code < 300:
-                return True, None
-            return False, f'Brevo error {resp.status_code}: {resp.text[:200]}'
-        except requests.RequestException as e:
-            return False, str(e)
+        # Delegate to utilities.email
+        return send_verification_email(to_email, code)
