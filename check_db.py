@@ -5,7 +5,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from app import create_app
-from models import Interview, Result
+from database_models import Interview, Result
 
 def query_database():
     """Initializes the app and queries the database within the app context."""
