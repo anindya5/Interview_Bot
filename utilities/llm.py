@@ -30,5 +30,4 @@ def call_gemini_api(prompt: str, retries: int = 3, backoff_factor: int = 2) -> s
         except (KeyError, IndexError) as e:
             return f"Error: Could not parse API response: {e} - Response: {response.text}"
 
-    return "Error: API request failed after multiple retries."}
-```
+    return "Error: API request failed after multiple retries."
