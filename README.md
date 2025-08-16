@@ -1,5 +1,15 @@
 # Intelligent Interview Assistant
 
+<!-- SonarCloud Badges -->
+<p>
+  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=alert_status" alt="Quality Gate Status"></a>
+  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=coverage" alt="Coverage"></a>
+  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=bugs" alt="Bugs"></a>
+  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=code_smells" alt="Code Smells"></a>
+  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=sqale_rating" alt="Maintainability"></a>
+  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=security_rating" alt="Security"></a>
+</p>
+
 An AI-powered interview system that conducts interviews on specific topics and adapts its questions based on candidate responses.
 
 ## Features
@@ -62,3 +72,20 @@ python app.py
 2. Start the interview
 3. Respond to questions
 4. The system will adapt its questions based on your responses
+
+## SonarCloud
+
+- CI is configured via `.github/workflows/sonarcloud.yml` to run tests with coverage and publish analysis to SonarCloud.
+- Project configuration is in `sonar-project.properties`.
+- Ensure you set these values to match your SonarCloud project:
+  - `sonar.organization`
+  - `sonar.projectKey`
+
+### Enforce status checks on PRs
+
+1. In GitHub, go to Settings → Branches → Add rule (or edit existing for `main`).
+2. Enable "Require status checks to pass before merging".
+3. Select:
+   - "SonarCloud Code Analysis"
+   - "SonarCloud Quality Gate"
+4. Save. PRs will be blocked until the quality gate passes.
