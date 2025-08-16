@@ -1,33 +1,128 @@
 import time
 import requests
 from config import API_URL
+from typing import Optional
+
+
+def _build_request(prompt: str):
+    """Build request headers and JSON payload for the LLM endpoint.
+
+    The payload matches the structure expected by Google/Gemini-style APIs:
+    {
+      "contents": [ { "parts": [ { "text": <prompt> } ] } ]
+    }
+
+    Keeping this centralized ensures the structure stays in sync with
+    `_extract_text()` which parses the corresponding response shape.
+
+    Args:
+        prompt: The prompt/question to send to the model.
+
+    Returns:
+        A tuple of (headers, data) ready to pass to requests.post.
+    """
+    headers = {'Content-Type': 'application/json'}
+    data = {'contents': [{'parts': [{'text': prompt}]}]}
+    return headers, data
+
+
+def _extract_text(response_json: dict) -> Optional[str]:
+    """Extract plain text from a Gemini-style response JSON.
+
+    Expected shape (minimal):
+    {
+      "candidates": [
+        { "content": { "parts": [ { "text": "..." } ] } }
+      ]
+    }
+
+    The function is intentionally defensive:
+    - Returns None if any of the expected keys/arrays are missing/empty.
+    - Strips the text if found; otherwise returns None.
+
+    Args:
+        response_json: Parsed JSON from the API response.
+
+    Returns:
+        The extracted text, or None when format does not match expectations.
+    """
+    candidates = response_json.get('candidates') or []
+    if not candidates:
+        return None
+    candidate = candidates[0]
+    content = candidate.get('content') or {}
+    parts = content.get('parts') or []
+    if not parts:
+        return None
+    text = parts[0].get('text')
+    return text.strip() if isinstance(text, str) else None
+
+
+def _backoff_sleep(attempt: int, backoff_factor: int) -> None:
+    """Sleep using exponential backoff based on the attempt number.
+
+    The wait time is computed as `backoff_factor ** attempt` and printed
+    for observability during local development/tests.
+
+    Args:
+        attempt: Zero-based attempt index within the retry loop.
+        backoff_factor: Base used for exponentiation (e.g., 2 -> 1,2,4,... seconds).
+    """
+    wait_time = max(0, backoff_factor ** attempt)
+    if wait_time:
+        print(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
+        time.sleep(wait_time)
 
 
 def call_gemini_api(prompt: str, retries: int = 3, backoff_factor: int = 2) -> str:
-    headers = {'Content-Type': 'application/json'}
-    data = {'contents': [{'parts': [{'text': prompt}]}]}
+    """Call the LLM API with simple retry and response parsing.
 
-    for i in range(retries):
+    Behavior:
+    - Builds request via `_build_request()`.
+    - Attempts up to `retries` times.
+      * On HTTP 429, sleeps with `_backoff_sleep()` then retries.
+      * On other HTTP errors, returns an error string including status code.
+      * On network errors (RequestException), retries until attempts exhausted.
+    - On 2xx, parses JSON and extracts text via `_extract_text()`.
+      * If text is missing or payload shape is unexpected, returns a descriptive error.
+
+    Args:
+        prompt: Prompt/question to send to the model.
+        retries: Max attempts (default 3). Each iteration performs one POST.
+        backoff_factor: Base for exponential backoff (default 2).
+
+    Returns:
+        On success: Extracted text string.
+        On failure: Error string prefixed with "Error:" describing the issue.
+    """
+    headers, data = _build_request(prompt)
+
+    for attempt in range(retries):
         try:
-            response = requests.post(API_URL, headers=headers, json=data, timeout=120)
-            response.raise_for_status()
+            resp = requests.post(API_URL, headers=headers, json=data, timeout=120)
+            resp.raise_for_status()
 
-            response_json = response.json()
-            if 'candidates' in response_json and len(response_json['candidates']) > 0:
-                candidate = response_json['candidates'][0]
-                if 'content' in candidate and 'parts' in candidate['content'] and len(candidate['content']['parts']) > 0:
-                    return candidate['content']['parts'][0]['text'].strip()
-            return f"Error: Unexpected API response format: {response.text}"
+            payload = resp.json()
+            text = _extract_text(payload)
+            if text:
+                return text
+            return f"Error: Unexpected API response format: {resp.text}"
+
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 429 and i < retries - 1:
-                wait_time = backoff_factor ** i
-                print(f"Rate limit exceeded. Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
-            else:
-                return f"Error: API request failed with status {e.response.status_code}: {e.response.text}"
-        except requests.exceptions.RequestException as e:
-            return f"Error: API request failed: {e}"
-        except (KeyError, IndexError) as e:
-            return f"Error: Could not parse API response: {e} - Response: {response.text}"
+            status = getattr(e.response, 'status_code', None)
+            if status == 429 and attempt < retries - 1:
+                _backoff_sleep(attempt, backoff_factor)
+                continue
+            # Non-retryable HTTP error or no attempts left
+            error_text = getattr(e.response, 'text', '')
+            return f"Error: API request failed with status {status}: {error_text}"
 
-    return "Error: API request failed after multiple retries."
+        except requests.RequestException as e:
+            # Network or other request error; only retry if attempts left
+            if attempt < retries - 1:
+                _backoff_sleep(attempt, backoff_factor)
+                continue
+            return f"Error: Request failed: {str(e)}"
+
+    # Should not reach here due to returns in loop, but kept as a safeguard
+    return "Error: Exhausted retries without a successful response"
