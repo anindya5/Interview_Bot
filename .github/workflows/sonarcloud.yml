@@ -44,6 +44,15 @@ jobs:
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          args: >-
+            -Dsonar.projectKey=anindya5_Interview_Bot
+            -Dsonar.organization=anindya5
+            -Dsonar.defaultBranch=main
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.sources=.
+            -Dsonar.tests=tests
+            -Dsonar.exclusions=.venv/**,venv/**,node_modules/**,frontend/**,**/__pycache__/**,**/*.pyc,instance/**,static/**,templates/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
