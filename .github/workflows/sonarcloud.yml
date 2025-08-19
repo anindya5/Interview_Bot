@@ -36,9 +36,9 @@ jobs:
       - name: Run tests with coverage
         env:
           # Provide dummy variables as needed by the app during tests
-          DATABASE_URL: sqlite:///:memory:
-          REDIS_URL: redis://localhost:6379/0
-          GEMINI_API_KEY: dummy
+          DATABASE_URL: "sqlite:///:memory:"
+          REDIS_URL: "redis://localhost:6379/0"
+          GEMINI_API_KEY: "dummy"
         run: |
           pytest
 
