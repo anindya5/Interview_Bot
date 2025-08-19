@@ -52,7 +52,7 @@ jobs:
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sources=.
             -Dsonar.tests=tests
-            -Dsonar.exclusions=.venv/**,venv/**,node_modules/**,frontend/**,**/__pycache__/**,**/*.pyc,instance/**,static/**,templates/**
+            -Dsonar.exclusions=tests/**,.venv/**,venv/**,node_modules/**,frontend/**,**/__pycache__/**,**/*.pyc,instance/**,static/**,templates/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
