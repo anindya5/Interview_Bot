@@ -1,14 +1,8 @@
 # Intelligent Interview Assistant
 
 <!-- SonarCloud Badges -->
-<p>
-  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=alert_status" alt="Quality Gate Status"></a>
-  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=coverage" alt="Coverage"></a>
-  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=bugs" alt="Bugs"></a>
-  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=code_smells" alt="Code Smells"></a>
-  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=sqale_rating" alt="Maintainability"></a>
-  <a href="https://sonarcloud.io/summary/overall?id=anindya5"><img src="https://sonarcloud.io/api/project_badges/measure?project=anindya5&metric=security_rating" alt="Security"></a>
-</p>
+[![SonarCloud](https://github.com/anindya5/Interview_Bot/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/anindya5/Interview_Bot/actions/workflows/sonarcloud.yml)
+
 
 An AI-powered interview system that conducts interviews on specific topics and adapts its questions based on candidate responses.
 
