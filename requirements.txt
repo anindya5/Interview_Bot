@@ -10,3 +10,5 @@ watchdog==2.3.1
 Flask-SQLAlchemy==3.1.1
 psycopg2-binary==2.9.9
 fakeredis==2.23.2
+pytest==8.2.2
+pytest-cov==5.0.0
